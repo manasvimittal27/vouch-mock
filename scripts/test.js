@@ -24,11 +24,11 @@ async function check(label, fn) {
 }
 const adm = (qs) => fetch(`${base}/admin?key=vouch-admin&${qs}`, { redirect: "manual" });
 
-await check("initialize + tools/list has 14 tools", async () => {
+await check("initialize + tools/list has 15 tools", async () => {
   const i = await rpc("initialize", { protocolVersion: "2025-03-26" });
   assert.equal(i.result.serverInfo.name, "vouch-mock");
   const l = await rpc("tools/list");
-  assert.equal(l.result.tools.length, 14);
+  assert.equal(l.result.tools.length, 15);
   for (const t of l.result.tools) assert.ok(t.name && t.description && t.inputSchema);
 });
 
@@ -62,14 +62,17 @@ let search;
 await check("catalogue search returns heroes with buyers_like_you", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "pastel cotton anarkali", occasion: "cousin ki engagement", buyer_height_cm: 160, buyer_weight_kg: 58 });
   search = r.body;
-  const p01 = search.results.find((x) => x.product_id === "P01");
+  const p01 = search.items.find((x) => x.startsWith("P01 |"));
   assert.ok(p01, "P01 present");
-  assert.equal(p01.buyers_like_you.sizes_bought.L, 7);
-  assert.ok(search.results.find((x) => x.product_id === "P09"), "sheer P09 present (agent must drop it)");
+  assert.match(p01, /7 of 9 buyers like you happy in L \(78%\)/);
+  assert.match(p01, /also sold by: P02 Kurti Kart/);
+  assert.ok(!search.items.find((x) => x.startsWith("P02 |")), "P02 folded into P01");
+  assert.match(p01, /BELOW its 30-day low/);
+  assert.ok(search.items.find((x) => x.startsWith("P09 |") && x.includes("SHEER")), "sheer P09 present (agent must drop it)");
 });
 await check("men's wear request returns no results", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "kurta for my husband" });
-  assert.equal(r.body.results.length, 0);
+  assert.equal(r.body.items.length, 0);
 });
 await check("kwargs-wrapped arguments are unwrapped", async () => {
   const r = await tool("pinelabs_catalog_get_item", { kwargs: { product_id: "P01", size: "L" } });
@@ -189,11 +192,22 @@ await check("Twilio inbound webhook → inbox tool (voice note)", async () => {
   const r = await tool("twilio_whatsapp_inbox", { from: "+919812345678" });
   assert.equal(r.body.messages[0].media[0].content_type, "audio/ogg");
 });
+await check("twilio_send_whatsapp: validates input, dry-run switch works", async () => {
+  const bad = await tool("twilio_send_whatsapp", { to: "+919812345678" });
+  assert.equal(bad.body.error, "missing_body");
+  await adm("set=whatsapp&v=dry");
+  const r = await tool("twilio_send_whatsapp", { kwargs: { to: "9812345678", body: "Hi Riya" } });
+  assert.equal(r.body.status, "dry_run");
+  assert.equal(r.body.to, "+919812345678");
+  await adm("set=whatsapp&v=live");
+  const l = await (await fetch(`${base}/logs.json`)).json();
+  assert.equal(l.outbox[0].sid, "DRY-RUN");
+});
 await check("/logs and /health", async () => {
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.ok(l.calls.length > 10);
   const h = await (await fetch(`${base}/`)).json();
-  assert.equal(h.tools, 14);
+  assert.equal(h.tools, 15);
 });
 
 if (process.env.SLOW) {

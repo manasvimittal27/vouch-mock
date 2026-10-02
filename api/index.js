@@ -164,7 +164,7 @@ async function payPage(req, res, id, q) {
 
 async function logsPage(res, json) {
   const calls = await range("calls", 150);
-  if (json) return res.status(200).json({ store: STORE_KIND, calls });
+  if (json) return res.status(200).json({ store: STORE_KIND, calls, outbox: await range("outbox", 50), inbox: await range("inbox", 50) });
   const rows = calls.map((c) => `<tr><td><code>${esc(c.ts)}</code><br><span class="muted">${esc(c.via)} · ${c.ms} ms</span></td>
     <td><b>${esc(c.tool)}</b><br><span class="tag ${c.status >= 400 ? "err" : ""}">${esc(c.rail || "")} · ${c.status}</span></td>
     <td><pre>${esc(JSON.stringify(c.args))}</pre></td><td><pre>${esc(c.result)}</pre></td></tr>`).join("");
@@ -178,7 +178,8 @@ const SWITCHES = [
   ["catalog_item", "Checkout item check (pinelabs_catalog_get_item)", ["normal", "price_jump", "out_of_stock"]],
   ["payment", "Payment status (pinelabs_get_order_status)", ["normal", "timeout"]],
   ["tracking", "Delivery (delhivery_track)", ["normal", "delayed", "delivered"]],
-  ["exchange", "Doorstep exchange", ["normal", "no_stock", "slow"]]
+  ["exchange", "Doorstep exchange", ["normal", "no_stock", "slow"]],
+  ["whatsapp", "Outbound WhatsApp (twilio_send_whatsapp)", ["live", "dry"]]
 ];
 
 async function admin(req, res, q) {
