@@ -70,6 +70,16 @@ await check("catalogue search returns heroes with buyers_like_you", async () => 
   assert.match(p01, /BELOW its 30-day low/);
   assert.ok(search.items.find((x) => x.startsWith("P09 |") && x.includes("SHEER")), "sheer P09 present (agent must drop it)");
 });
+await check("ranked search with full profile: P01 main, P03 cheaper, P04 safest, rules cited", async () => {
+  const r = await tool("pinelabs_catalog_search", { query: "pastel cotton anarkali", occasion: "engagement", setting: "outdoor", needed_by: "2026-12-30", max_price: 2500, delivery_pin: "110017", size_tag: "M", buyer_height_cm: 160, buyer_weight_kg: 58, fit_notes: "broad shoulders", taps_colour: "pastel", taps_work: "simple", taps_silhouette: "flowy", taps_fabric: "cotton_linen", dealbreakers: "sleeveless", past_return: "sheer, see-through" });
+  assert.equal(r.body.picks.main.product_id, "P01");
+  assert.equal(r.body.picks.main.size, "L");
+  assert.equal(r.body.picks.cheaper.product_id, "P03");
+  assert.equal(r.body.picks.safest_fit.product_id, "P04");
+  assert.ok(r.body.rows.some((x) => x.startsWith("FAIL F5") && x.includes("P09")));
+  assert.ok(r.body.rows.some((x) => x.startsWith("FAIL F4") && x.includes("P08")));
+  assert.ok(r.body.rows.some((x) => x.startsWith("FAIL F1") && x.includes("P05")));
+});
 await check("men's wear request returns no results", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "kurta for my husband" });
   assert.equal(r.body.items.length, 0);
