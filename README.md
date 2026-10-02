@@ -1,72 +1,62 @@
-# Vouch: Delhivery mock server (v0.1)
+# Vouch connector server (v0.3)
 
-Mock of Delhivery's B2C APIs for the Vouch agent (The Ken × Pine Labs, Round 3).
-It exposes the same endpoints **two ways**:
+The connector server for **Vouch**, an L2 personal shopper for women's occasion wear (The Ken × Pine Labs Case-Build Competition, Round 3).
 
-| Way | Used by | Path |
+AgenticOrg lets an agent use **one** custom MCP connector, so every rail sits behind a single MCP endpoint, `/mcp`.
+
+| Rail | Real or mock | Tools |
 |---|---|---|
-| **MCP** (tools auto-discovered by AgenticOrg) | Vouch agent | `/mcp` |
-| **REST** (Delhivery's exact paths and fields) | Judges / curl / docs | `/c/api/pin-codes/json/`, `/api/dc/expected_tat` |
+| **Delhivery** | Mock. Endpoint names and fields mirror Delhivery's B2C API | `delhivery_pin_codes_json` (GET /c/api/pin-codes/json/), `delhivery_expected_tat` (GET /api/dc/expected_tat), `delhivery_create_shipment` (POST /api/cmu/create.json), `delhivery_track` (GET /api/v1/packages/json/) |
+| **Pine Labs** | Mock. Mirrors the Plural endpoints used by AgenticOrg's own `pinelabs_plural` connector; amounts in paise | `pinelabs_create_order` (POST /api/checkout/v1/orders), `pinelabs_get_order_status` (GET /api/pay/v1/orders/{id}), `pinelabs_initiate_refund` (POST /api/pay/v1/orders/{id}/refunds) |
+| **Gnani** | **Real**: forwards to `api.vachana.ai` with our key | `gnani_speech_to_text` (POST /stt/v3), `gnani_text_to_speech` (POST /api/v1/tts/inference, timbre-v2.5) |
+| **WhatsApp inbound** | **Real** messages: Twilio's WhatsApp webhook posts to `/twilio/inbound` (AgenticOrg's native Twilio connector can only send) | `twilio_whatsapp_inbox` |
+| Extra capability 1 (Pine Labs) | Mock | `pinelabs_catalog_search`, `pinelabs_catalog_get_item`: multi-merchant catalogue with size-level stock, 30-day low price and fit feedback from similar-build buyers |
+| Extra capability 2 (Pine Labs) | Mock | `pinelabs_place_seller_order`: place the order with the seller once the payment is PROCESSED |
+| Extra capability 3 (Delhivery) | Mock | `delhivery_doorstep_exchange`: same-visit size swap, booked only if it lands before the occasion |
 
-AgenticOrg's custom connectors only get tools when **MCP** is ticked, so the agent talks to `/mcp`.
-Each MCP tool mirrors one Delhivery endpoint with the same request and response fields.
+All catalogue listings, sellers and reviews are **sample data** made up for the demo.
 
-## Tools / endpoints
+## Failure modes (the mock behaves like a real API, including when it breaks)
 
-| MCP tool | Mirrors | Inputs |
-|---|---|---|
-| `delhivery_pin_codes_json` | `GET /c/api/pin-codes/json/?filter_codes=` | `filter_codes` |
-| `delhivery_expected_tat` | `GET /api/dc/expected_tat?origin_pin=&destination_pin=&mot=&pdt=` | `origin_pin`, `destination_pin`, `mot` (S/E), `pdt` (B2C) |
-
-⚠️ Check the Expected TAT path and response fields against your Delhivery developer-portal docs and adjust `lib/delhivery.js` if they differ.
-
-## Test pincodes (for eval cases)
-
-| Pincode | Behaviour |
+| Trigger | Behaviour |
 |---|---|
-| 110017, 110001, 122002, 201301, 400001, 560034, 302001, 700001, 600001 | Serviceable |
-| 194101 (Leh), 793001 (Shillong), 176215 | Serviceable but **ODA**: prepaid only, +2 days |
-| 744301, 799999, 190025 | **Not serviceable** (empty `delivery_codes`) |
-| 000001 | **Timeout** (12 s, longer than AgenticOrg's 10 s limit) |
-| 000002 | **Malformed** reply (truncated JSON) |
-| 000003 | **Server error** (HTTP 500 HTML page) |
+| Pincode `000001` | Hangs 12 s (longer than AgenticOrg's 10 s connector timeout) |
+| Pincode `000002` | Truncated, malformed JSON |
+| Pincode `000003` | HTTP 500 HTML page |
+| Pincode `744301`, `799999`, `190025` | Not serviceable (empty `delivery_codes`) |
+| Pincode `194101`, `793001`, `176215` | ODA: prepaid only, +2 days, no replacement |
+| `/admin` → checkout item: `price_jump` / `out_of_stock` | Live price +₹300 / her size sold out at checkout |
+| `/admin` → payment: `timeout` | Order-status call hangs 12 s |
+| Payment page "Simulate UPI timeout" | Order goes `FAILED` with `PAYMENT_TIMEOUT` |
+| `/admin` → delivery: `delayed` / `delivered` | Expected delivery date slips by 3 days / marked delivered now |
+| `/admin` → exchange: `no_stock` / `slow` | Exchange size unavailable / exchange can't land in time |
+| `/admin` → demo clock +N days | Fast-forwards "today" for the day-2 check-in and return-window steps |
 
-Expected TAT: same city/metro 1 day, same or neighbouring zone 3, far 5, ODA +2, express −1.
+Scenarios are switched out of band. No response ever says which scenario is armed.
 
-## Deploy on Vercel (about 10 minutes)
+## Pages
 
-**Option A: GitHub + Vercel website (no terminal)**
-1. Create a free GitHub account if needed → **New repository** → name `vouch-mock` → Create.
-2. On the empty repo page click **uploading an existing file** → drag in *everything inside* this folder (keep the `api` and `lib` folders) → **Commit**.
-3. Go to vercel.com → sign in with GitHub → **Add New → Project** → import `vouch-mock` → **Deploy** (no settings needed).
-4. Copy your URL, e.g. `https://vouch-mock-abc.vercel.app`.
+- `/logs`: every tool call as it lands, with the exact arguments received. Auto-refreshes; keep it open while recording.
+- `/admin?key=ADMIN_KEY`: scenario switches, demo clock, reset.
+- `/twilio/inbound`: set this as the Twilio WhatsApp sandbox's "When a message comes in" URL (POST).
+- `/pay/{order_id}`: the hosted checkout she opens from WhatsApp. Labelled as a mock; no real money moves.
 
-**Option B: terminal**
+## Environment variables (Vercel → Settings → Environment Variables)
+
+| Name | Needed for |
+|---|---|
+| `GNANI_API_KEY` | The real Gnani STT/TTS calls |
+| `ADMIN_KEY` | Protects `/admin` (default `vouch-admin`; change it) |
+| `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` | Downloading her WhatsApp voice notes from Twilio for Gnani |
+| `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Durable state. Add via Vercel → Storage → Upstash Redis (free). Without it, state lives in memory and can be lost between calls |
+
+## Run and test locally
+
 ```
-cd vouch-mock
-npx vercel --prod
+npm run dev      # http://localhost:8787
+npm test         # 28 end-to-end checks; SLOW=1 npm test adds the 12 s timeout case
 ```
 
-## Check it works
-Open in a browser:
-- `https://YOUR-URL/` → `{"status":"ok", ...}`
-- `https://YOUR-URL/mcp` → lists the two tools
+## Register on AgenticOrg
 
-Or with curl:
-```
-curl -s https://YOUR-URL/mcp -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-
-curl -s 'https://YOUR-URL/c/api/pin-codes/json/?filter_codes=110017' -H 'Authorization: Token test'
-```
-
-## Register in AgenticOrg
-Connectors → **Register Connector**:
-- Connector Name: `delhivery_mock_vouch`
-- Tick **MCP**
-- Base URL: `https://YOUR-URL/mcp`
-- Category: Ecommerce (or Custom)
-- Auth Type: **None**
-- Register → open it → **Health Check**
-
-Then on the Vouch agent → **Config** → add `delhivery_mock_vouch`, authorize its two tools, remove any unhealthy connector, save, run.
+Connectors → Register Connector: name `mcp_vouch_all`, tick **MCP**, URL `https://<your-deployment>/mcp`, category Ecommerce, auth None. Then link it to the agent and authorize its tools through the API (the UI tool picker does not list MCP tools). See `RUNBOOK.md`.

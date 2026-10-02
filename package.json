@@ -1,8 +1,9 @@
 {
-  "name": "vouch-delhivery-mock",
-  "version": "0.1.0",
+  "name": "vouch-mock",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Delhivery mock (MCP + REST) for the Vouch agent, The Ken Round 3",
+  "description": "Vouch connector server: Delhivery + Pine Labs mocks, 3 extra capabilities, Gnani adapter, behind one MCP endpoint (The Ken x Pine Labs, Round 3)",
+  "scripts": { "dev": "node scripts/dev.js", "test": "node scripts/test.js" },
   "engines": { "node": ">=18" }
 }
