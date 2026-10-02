@@ -1,0 +1,8 @@
+{
+  "name": "vouch-delhivery-mock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Delhivery mock (MCP + REST) for the Vouch agent, The Ken Round 3",
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/api/health" },
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/c/api/pin-codes/json", "destination": "/api/pincodes" },
+    { "source": "/c/api/pin-codes/json/", "destination": "/api/pincodes" }
+  ],
+  "functions": {
+    "api/**/*.js": { "maxDuration": 20 }
+  }
+}
