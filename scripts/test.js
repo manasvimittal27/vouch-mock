@@ -195,23 +195,36 @@ await check("REST mirrors need auth and work", async () => {
   const e = await fetch(`${base}/api/cmu/create.json`, { method: "POST", headers: { Authorization: "Token x", "Content-Type": "application/x-www-form-urlencoded" }, body: "format=json&data=" + encodeURIComponent(JSON.stringify({ shipments: [{ order: "X1", pin: "400001", payment_mode: "Prepaid" }] })) });
   assert.equal((await e.json()).success, true);
 });
-await check("Twilio inbound webhook → inbox tool (voice note)", async () => {
+await check("Twilio inbound webhook → whatsapp_inbox (voice note)", async () => {
   const form = new URLSearchParams({ MessageSid: "SM1", From: "whatsapp:+919812345678", To: "whatsapp:+14155238886", Body: "", NumMedia: "1", MediaUrl0: "https://api.twilio.com/media/x", MediaContentType0: "audio/ogg", ProfileName: "Riya" });
   const w = await fetch(`${base}/twilio/inbound`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
   assert.equal(w.status, 200);
-  const r = await tool("twilio_whatsapp_inbox", { from: "+919812345678" });
+  const r = await tool("whatsapp_inbox", { from: "+919812345678" });
   assert.equal(r.body.messages[0].media[0].content_type, "audio/ogg");
 });
-await check("twilio_send_whatsapp: validates input, dry-run switch works", async () => {
-  const bad = await tool("twilio_send_whatsapp", { to: "+919812345678" });
+await check("whatsapp_send: validates input, dry-run switch works", async () => {
+  const bad = await tool("whatsapp_send", { to: "+919812345678" });
   assert.equal(bad.body.error, "missing_body");
   await adm("set=whatsapp&v=dry");
-  const r = await tool("twilio_send_whatsapp", { kwargs: { to: "9812345678", body: "Hi Riya" } });
+  const r = await tool("whatsapp_send", { kwargs: { to: "9812345678", body: "Hi Riya" } });
   assert.equal(r.body.status, "dry_run");
   assert.equal(r.body.to, "+919812345678");
   await adm("set=whatsapp&v=live");
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.equal(l.outbox[0].sid, "DRY-RUN");
+});
+await check("Meta webhook: verify handshake + inbound text and voice note land in whatsapp_inbox", async () => {
+  const v = await fetch(`${base}/meta/webhook?hub.mode=subscribe&hub.verify_token=vouch-verify&hub.challenge=12345`);
+  assert.equal(await v.text(), "12345");
+  const bad = await fetch(`${base}/meta/webhook?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=1`);
+  assert.equal(bad.status, 403);
+  const payload = { object: "whatsapp_business_account", entry: [{ changes: [{ value: { metadata: { display_phone_number: "15550000000" }, contacts: [{ wa_id: "919811900001", profile: { name: "Riya" } }],
+    messages: [{ id: "wamid.A1", from: "919811900001", type: "audio", audio: { id: "MEDIA123", mime_type: "audio/ogg; codecs=opus" } }, { id: "wamid.A2", from: "919811900001", type: "text", text: { body: "haan, order karo" } }] } }] }] };
+  const w = await fetch(`${base}/meta/webhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  assert.equal(w.status, 200);
+  const r = await tool("whatsapp_inbox", { from: "+919811900001" });
+  assert.equal(r.body.messages[0].body, "haan, order karo");
+  assert.match(r.body.messages[1].media[0].media_url, /\/meta\/media\/MEDIA123$/);
 });
 await check("/logs and /health", async () => {
   const l = await (await fetch(`${base}/logs.json`)).json();

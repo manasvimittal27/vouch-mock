@@ -1,3 +1,4 @@
+import * as W from "../lib/whatsapp.js";
 // Single entry point for the whole Vouch mock server (Vercel rewrites every path here).
 //   /mcp                                   MCP (Streamable HTTP, stateless JSON) — the one AgenticOrg connector
 //   /c/api/pin-codes/json/  /api/dc/expected_tat  /api/cmu/create.json  /api/v1/packages/json/   Delhivery REST mirrors
@@ -179,7 +180,7 @@ const SWITCHES = [
   ["payment", "Payment status (pinelabs_get_order_status)", ["normal", "timeout"]],
   ["tracking", "Delivery (delhivery_track)", ["normal", "delayed", "delivered"]],
   ["exchange", "Doorstep exchange", ["normal", "no_stock", "slow"]],
-  ["whatsapp", "Outbound WhatsApp (twilio_send_whatsapp)", ["live", "dry"]]
+  ["whatsapp", "Outbound WhatsApp (whatsapp_send)", ["live", "dry"]]
 ];
 
 async function admin(req, res, q) {
@@ -214,7 +215,7 @@ export default async function handler(req, res) {
   try {
     if (path === "/mcp" || path === "/api/mcp") return await mcp(req, res, ctx);
     if (path === "/" || path === "/health") {
-      return res.status(200).json({ status: "ok", service: SERVER_INFO, store: STORE_KIND, gnani_configured: Boolean(process.env.GNANI_API_KEY), mcp_endpoint: "/mcp", tools: TOOLS.length, logs: "/logs", time: new Date().toISOString() });
+      return res.status(200).json({ status: "ok", service: SERVER_INFO, store: STORE_KIND, gnani_configured: Boolean(process.env.GNANI_API_KEY), whatsapp_provider: W.PROVIDER(), mcp_endpoint: "/mcp", tools: TOOLS.length, logs: "/logs", time: new Date().toISOString() });
     }
     if (path === "/twilio/inbound" && req.method === "POST") {
       // Twilio WhatsApp sandbox → "When a message comes in" webhook (form-encoded). Stores the real message.
@@ -226,6 +227,19 @@ export default async function handler(req, res) {
       await push("calls", { ts: msg.received_at, real_ts: new Date().toISOString(), via: "twilio-webhook", tool: "INBOUND WhatsApp", rail: "Twilio WhatsApp", args: { from: msg.from }, status: 200, ms: 0, result: JSON.stringify({ body: msg.body, media: msg.media.length }) });
       res.setHeader("Content-Type", "text/xml");
       return res.status(200).send("<Response></Response>");
+    }
+    if (path === "/meta/webhook") {
+      if (req.method === "GET") { const v = W.metaVerify(q); return res.status(v.status).send(v.text); }
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      await W.metaInbound(body, ctx.base);
+      return res.status(200).json({ ok: true });
+    }
+    let mm = /^\/meta\/media\/([A-Za-z0-9_.-]+)$/.exec(path);
+    if (mm) {
+      const f = await W.metaMedia(mm[1]);
+      if (!f) return res.status(404).send("media not found");
+      res.setHeader("Content-Type", f.type);
+      return res.status(200).send(f.bytes);
     }
     if (path === "/logs") return await logsPage(res, false);
     if (path === "/logs.json") return await logsPage(res, true);
