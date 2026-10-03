@@ -86,6 +86,11 @@ await check("search without a budget asks for it instead of failing", async () =
   assert.deepEqual(r.body.missing, ["budget"]);
   assert.match(r.body.next_step, /whatsapp_send/);
 });
+await check("unknown occasion (get together) still returns ranked rows, never a false 'out of scope'", async () => {
+  const r = await tool("pinelabs_catalog_search", { query: "occasion wear", occasion: "Get together", needed_by: "2026-12-30", max_price: 2500, size_tag: "M", buyer_height_cm: 160, buyer_weight_kg: 58, delivery_pin: "110017", taps_colour: "pastel" });
+  assert.ok(r.body.rows.length > 3, "rows returned");
+  assert.ok(r.body.picks.main, "has a main pick");
+});
 await check("men's wear request returns no results", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "kurta for my husband" });
   assert.equal(r.body.items.length, 0);

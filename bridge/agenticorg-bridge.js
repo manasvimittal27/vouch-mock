@@ -29,13 +29,21 @@
   document.body.appendChild(btn);
 
   async function ask(query, thread_id) {
-    const c = csrf();
-    const r = await fetch("/api/v1/chat/query", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": c },
-      body: JSON.stringify({ csrf_token: c, agent_id: CFG.agentId, query, thread_id })
-    });
-    return r.json();
+    // AgenticOrg occasionally answers with an HTML error page (gateway timeout); retry once before giving up.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const c = csrf();
+      const r = await fetch("/api/v1/chat/query", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": c },
+        body: JSON.stringify({ csrf_token: c, agent_id: CFG.agentId, query, thread_id })
+      });
+      const text = await r.text();
+      try { return JSON.parse(text); } catch {
+        if (attempt === 2) throw new Error(`AgenticOrg returned HTTP ${r.status} (not JSON) twice`);
+        tell({ type: "vouch-info", text: `AgenticOrg returned HTTP ${r.status}; retrying once…` });
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+    }
   }
 
   async function handle(ev) {
