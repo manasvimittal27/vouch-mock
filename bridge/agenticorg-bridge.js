@@ -57,7 +57,7 @@
     const sentOk = (x) => /WHATSAPP_SID:\s*(DRY-RUN|[0-9a-f]{8}-[0-9a-f-]{20,})/i.test(String(x.answer || ""));
     if (!sentOk(j)) {
       tell({ type: "vouch-info", text: "send check: no confirmed WhatsApp send in that turn — nudging the agent once" });
-      j = await ask(" SEND CHECK (bridge): your last turn ended without a successful whatsapp_send, so she has received nothing. If your decision stands, call whatsapp_send now with your exact reply to her (finish any step you started, e.g. after her yes create the order), then write the JSON answer.", state.threads[ev.from]);
+      j = await ask(" SEND CHECK (bridge): your last turn's answer shows no WhatsApp message id. If whatsapp_send already succeeded in that turn, do NOT send again: just rewrite the JSON answer with that WHATSAPP_SID. Otherwise she has received nothing: if your decision stands, call whatsapp_send now with your exact reply to her (finish any step you started, e.g. after her yes create the order), then write the JSON answer.", state.threads[ev.from]);
       j.nudged = true;
     }
     window.__vouchLog = (window.__vouchLog || []).concat([{ ev, j }]);
