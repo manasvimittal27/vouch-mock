@@ -42,7 +42,7 @@
     const isNew = !state.threads[ev.from];
     if (isNew) state.threads[ev.from] = crypto.randomUUID();
     const profile = CFG.profiles[ev.from] || `PROFILE: new customer, whatsapp ${ev.from}${ev.name ? ", name " + ev.name : ""}.`;
-    const payload = ` EVENT: new WhatsApp message (Vonage webhook, id ${String(ev.id).slice(0, 8)}) from ${ev.from}: "${String(ev.text || "").replace(/"/g, "'")}"` + (ev.voice_note ? ` voice_note: ${ev.voice_note}` : "");
+    const payload = ` EVENT: new WhatsApp message (Vonage webhook, id ${String(ev.id).slice(0, 8)}) from ${ev.from}: "${String(ev.text || "").replace(/"/g, "'")}"` + (ev.voice_note ? ` voice_note: ${ev.voice_note}` : "") + ". Your reply reaches her only through whatsapp_send.";
     const t0 = Date.now();
     const j = await ask((isNew ? profile : "") + payload, state.threads[ev.from]);
     const a = String(j.answer || "");

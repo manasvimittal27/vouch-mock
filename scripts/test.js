@@ -215,6 +215,8 @@ await check("whatsapp_send: validates input, dry-run switch works", async () => 
   const r = await tool("whatsapp_send", { kwargs: { to: "9812345678", body: "Hi Riya" } });
   assert.equal(r.body.status, "dry_run");
   assert.equal(r.body.to, "+919812345678");
+  const nl = await tool("whatsapp_send", { to: "+919812345678", body: "line one\\nline two" });
+  assert.equal(nl.body.body, "line one\nline two");
   await adm("set=whatsapp&v=live");
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.equal(l.outbox[0].sid, "DRY-RUN");
