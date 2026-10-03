@@ -80,6 +80,12 @@ await check("ranked search with full profile: P01 main, P03 cheaper, P04 safest,
   assert.ok(r.body.rows.some((x) => x.startsWith("FAIL F4") && x.includes("P08")));
   assert.ok(r.body.rows.some((x) => x.startsWith("FAIL F1") && x.includes("P05")));
 });
+await check("search without a budget asks for it instead of failing", async () => {
+  const r = await tool("pinelabs_catalog_search", { query: "dress", occasion: "engagement", needed_by: "2026-10-05", max_price: null, size_tag: "M", delivery_pin: "110017" });
+  assert.equal(r.isError, false);
+  assert.deepEqual(r.body.missing, ["budget"]);
+  assert.match(r.body.next_step, /whatsapp_send/);
+});
 await check("men's wear request returns no results", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "kurta for my husband" });
   assert.equal(r.body.items.length, 0);
