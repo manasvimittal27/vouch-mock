@@ -15,7 +15,10 @@
   if (window.__vouchBridge) window.__vouchBridge.stop();
   const state = { threads: {}, queue: [], busy: false, relay: null };
   const csrf = () => (document.cookie.match(/agenticorg_csrf=([^;]+)/) || [])[1];
-  const tell = (msg) => { try { state.relay && state.relay.postMessage(msg, CFG.relayOrigin); } catch { /* relay closed */ } };
+  const tell = (msg) => {
+    try { state.relay && state.relay.postMessage(msg, CFG.relayOrigin); } catch { /* relay closed */ }
+    if (state.panelLog) { const d = document.createElement("div"); d.style.cssText = "padding:6px 8px;border-radius:8px;background:" + (msg.type === "vouch-reply" ? "#ecfdf5" : "#f1f5f9") + ";white-space:pre-wrap"; d.textContent = (msg.type === "vouch-reply" ? "Vouch: " : "· ") + msg.text; state.panelLog.appendChild(d); state.panelLog.scrollTop = 1e9; }
+  };
 
   const btn = document.createElement("button");
   btn.textContent = "Connect WhatsApp → Vouch";
@@ -26,6 +29,21 @@
     btn.style.background = "#1e293b";
   };
   document.body.appendChild(btn);
+
+  // Test box: chat with Vouch from this tab without WhatsApp (keep the admin switch on "dry").
+  // Messages are marked SIMULATED in the event so the decision log never passes them off as real WhatsApp.
+  const panel = document.createElement("div");
+  panel.style.cssText = "position:fixed;right:16px;bottom:64px;z-index:99999;width:340px;max-height:60vh;display:flex;flex-direction:column;gap:6px;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:12px;padding:10px;font:13px/1.4 system-ui;box-shadow:0 8px 24px rgba(0,0,0,.2)";
+  panel.innerHTML = '<b>Test Vouch (no WhatsApp)</b><div data-log style="overflow:auto;display:flex;flex-direction:column;gap:4px;min-height:60px;max-height:40vh"></div><form data-f style="display:flex;gap:6px"><input data-i placeholder="e.g. Cousin ki engagement hai 14 ko, 2500 tak" style="flex:1;min-width:0;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px"><button style="background:#0d9488;color:#fff;border:0;border-radius:8px;padding:6px 10px">Send</button></form><div style="display:flex;justify-content:space-between;color:#64748b;font-size:11px"><span>as +919811935066 · replies are DRY-RUN</span><a href="#" data-r style="color:#0d9488">new chat</a></div>';
+  document.body.appendChild(panel);
+  state.panelLog = panel.querySelector("[data-log]");
+  panel.querySelector("[data-f]").onsubmit = (e) => {
+    e.preventDefault();
+    const i = panel.querySelector("[data-i]"); const text = i.value.trim(); if (!text) return; i.value = "";
+    const d = document.createElement("div"); d.style.cssText = "align-self:flex-end;padding:6px 8px;border-radius:8px;background:#dcfce7"; d.textContent = text; state.panelLog.appendChild(d);
+    state.queue.push({ id: "sim-" + Date.now(), from: "+919811935066", name: "Test", text, simulated: true }); drain();
+  };
+  panel.querySelector("[data-r]").onclick = (e) => { e.preventDefault(); state.threads = {}; tell({ type: "vouch-info", text: "new conversation: threads cleared" }); };
 
   async function ask(query, thread_id) {
     // AgenticOrg occasionally answers with an HTML error page (gateway timeout); retry once before giving up.
@@ -49,8 +67,9 @@
     const isNew = !state.threads[ev.from];
     if (isNew) state.threads[ev.from] = crypto.randomUUID();
     const profile = CFG.profiles[ev.from] || `PROFILE: new customer, whatsapp ${ev.from}${ev.name ? ", name " + ev.name : ""}.`;
-    const payload = ` EVENT: new WhatsApp message (Vonage webhook, id ${String(ev.id).slice(0, 8)}) from ${ev.from}: "${String(ev.text || "").replace(/"/g, "'")}"` + (ev.voice_note ? ` voice_note: ${ev.voice_note}` : "") + ". Your reply reaches her only through whatsapp_send.";
+    const payload = ` EVENT: new WhatsApp message (${ev.simulated ? "SIMULATED test message typed in the AgenticOrg tab, WhatsApp switch is dry" : "Vonage webhook"}, id ${String(ev.id).slice(0, 8)}) from ${ev.from}: "${String(ev.text || "").replace(/"/g, "'")}"` + (ev.voice_note ? ` voice_note: ${ev.voice_note}` : "") + ". Your reply reaches her only through whatsapp_send.";
     const t0 = Date.now();
+    tell({ type: "vouch-info", text: "Vouch is working on it (usually 15–40 s)…" });
     let j = await ask((isNew ? profile : "") + payload, state.threads[ev.from]);
     // Send check: a turn that answers her but never reached whatsapp_send leaves her with silence.
     // Nudge once, in the same thread, and record that the nudge happened (visible in the relay log).
@@ -87,7 +106,7 @@
   window.addEventListener("message", onMsg);
 
   window.__vouchBridge = {
-    stop() { window.removeEventListener("message", onMsg); btn.remove(); try { state.relay && state.relay.close(); } catch {} delete window.__vouchBridge; },
+    stop() { window.removeEventListener("message", onMsg); btn.remove(); panel.remove(); try { state.relay && state.relay.close(); } catch {} delete window.__vouchBridge; },
     reset() { state.threads = {}; tell({ type: "vouch-info", text: "new conversation: threads cleared" }); },
     state
   };
