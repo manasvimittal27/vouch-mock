@@ -205,6 +205,35 @@ async function admin(req, res, q) {
   return res.status(200).send(page("Vouch admin", html));
 }
 
+const BRIDGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Vouch bridge</title>
+<style>body{margin:0;background:#0f172a;color:#e2e8f0;font:13px/1.5 ui-monospace,Menlo,monospace}h1{font-size:14px;margin:0;padding:10px 12px;color:#5eead4;border-bottom:1px solid #1e293b}
+#log div{padding:6px 12px;border-bottom:1px solid #1e293b}.t{color:#64748b}.in{color:#fde68a}.out{color:#a7f3d0}.warn{color:#fca5a5}.info{color:#93c5fd}</style></head>
+<body><h1>Vouch bridge · WhatsApp (Vonage webhook) → AgenticOrg agent</h1><div id="log"></div>
+<script>
+const AO = "https://agenticorg.hackathon.pinelabs.com";
+let after = new Date().toISOString(); const seen = new Set();
+const esc = (s) => String(s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+function log(cls, html) { const d = document.createElement("div"); d.className = cls; d.innerHTML = '<span class="t">' + new Date().toLocaleTimeString("en-IN", { hour12: false }) + "</span> " + html; document.getElementById("log").prepend(d); }
+async function tick() {
+  if (!window.opener) { log("warn", "AgenticOrg tab closed — reopen the bridge from it."); return; }
+  try {
+    const j = await (await fetch("/events?after=" + encodeURIComponent(after), { cache: "no-store" })).json();
+    for (const ev of j.events || []) {
+      if (ev.at > after) after = ev.at;
+      if (seen.has(ev.id)) continue; seen.add(ev.id);
+      log("in", "⬇ <b>" + esc(ev.from) + "</b>: " + esc(ev.text || (ev.voice_note ? "[voice note]" : "")));
+      window.opener.postMessage({ type: "vouch-event", event: ev }, AO);
+    }
+  } catch (e) { log("warn", "feed error: " + esc(e.message)); }
+}
+window.addEventListener("message", (m) => {
+  if (m.origin !== AO || !m.data || !m.data.type) return;
+  if (m.data.type === "vouch-reply") log(m.data.hitl ? "warn" : "out", (m.data.hitl ? "⚠ held for review · " : "⬆ Vouch · ") + esc(m.data.text));
+  if (m.data.type === "vouch-info") log("info", esc(m.data.text));
+});
+log("info", "listening for new WhatsApp messages…"); setInterval(tick, 3000);
+</script></body></html>`;
+
 // ---------------- router ----------------
 export default async function handler(req, res) {
   const u = new URL(req.url, "http://x");
@@ -227,6 +256,12 @@ export default async function handler(req, res) {
       await push("calls", { ts: msg.received_at, real_ts: new Date().toISOString(), via: "twilio-webhook", tool: "INBOUND WhatsApp", rail: "Twilio WhatsApp", args: { from: msg.from }, status: 200, ms: 0, result: JSON.stringify({ body: msg.body, media: msg.media.length }) });
       res.setHeader("Content-Type", "text/xml");
       return res.status(200).send("<Response></Response>");
+    }
+    if (path === "/bridge") {
+      // Event relay window, opened by the AgenticOrg tab. AgenticOrg's CSP blocks fetches to other origins,
+      // so this same-origin page polls /events and hands each event to its opener with postMessage.
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(200).send(BRIDGE_HTML);
     }
     if (path === "/events") {
       // Inbound WhatsApp events for the AgenticOrg bridge (runs in the operator's logged-in tab).
