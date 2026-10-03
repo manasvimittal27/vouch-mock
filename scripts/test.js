@@ -44,6 +44,12 @@ await check("000002 malformed JSON", async () => {
   const r = await tool("delhivery_pin_codes_json", { filter_codes: "000002" });
   assert.equal(typeof r.body, "string");
 });
+await check("search with Delhivery down (000001) → delivery_check_failed, never 'not deliverable'", async () => {
+  const r = await tool("pinelabs_catalog_search", { query: "anarkali", occasion: "engagement", needed_by: "2026-10-14", max_price: 2500, delivery_pin: "000001", size_tag: "M" });
+  assert.equal(r.body.delivery_check_failed, true);
+  assert.equal(r.body.searched, false);
+  assert.ok(!/not deliverable/i.test(r.text));
+});
 await check("000003 HTTP 500 → isError", async () => {
   const r = await tool("delhivery_pin_codes_json", { filter_codes: "000003" });
   assert.equal(r.isError, true);
