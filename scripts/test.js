@@ -122,6 +122,22 @@ await check("scenario price_jump → ₹2,199", async () => {
   await adm("set=catalog_item&v=normal");
 });
 
+await check("price jump: get_item verdict PRICE_CHANGED; create_order refuses the stale amount", async () => {
+  await adm("set=catalog_item&v=price_jump&product_id=P01");
+  const g = await tool("pinelabs_catalog_get_item", { product_id: "P01", size: "L", quoted_price: 1899 });
+  assert.equal(g.body.verdict, "PRICE_CHANGED");
+  assert.equal(g.body.live_price, 2199);
+  const o = await tool("pinelabs_create_order", { product_id: "P01", size: "L", amount: 189900 });
+  assert.equal(o.body.code, "PRICE_MISMATCH");
+  await adm("set=catalog_item&v=out_of_stock&product_id=P01");
+  const g2 = await tool("pinelabs_catalog_get_item", { product_id: "P01", size: "L", quoted_price: 1899 });
+  assert.equal(g2.body.verdict, "OUT_OF_STOCK");
+  const o2 = await tool("pinelabs_create_order", { product_id: "P01", size: "L", amount: 189900 });
+  assert.equal(o2.body.code, "OUT_OF_STOCK");
+  await adm("set=catalog_item&v=normal");
+  const g3 = await tool("pinelabs_catalog_get_item", { product_id: "P01", size: "L", quoted_price: 1899 });
+  assert.equal(g3.body.verdict, "OK");
+});
 let order;
 await check("create order 189900 paise → redirect_url /pay/", async () => {
   const r = await tool("pinelabs_create_order", { merchant_order_reference: "vouch-riya-P01-L", amount: 189900, customer_name: "Riya" });
