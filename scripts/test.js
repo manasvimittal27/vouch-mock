@@ -226,6 +226,18 @@ await check("Meta webhook: verify handshake + inbound text and voice note land i
   assert.equal(r.body.messages[0].body, "haan, order karo");
   assert.match(r.body.messages[1].media[0].media_url, /\/meta\/media\/MEDIA123$/);
 });
+await check("Vonage webhook: inbound text + voice note land in whatsapp_inbox; status logged", async () => {
+  const w = await fetch(`${base}/vonage/inbound`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "whatsapp", message_uuid: "v-1", from: "919811900002", to: "14157386102", message_type: "audio", audio: { url: "https://api-us.nexmo.com/v3/media/abc" }, profile: { name: "Riya" } }) });
+  assert.equal(w.status, 200);
+  await fetch(`${base}/vonage/inbound`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "whatsapp", message_uuid: "v-2", from: "919811900002", message_type: "text", text: "Cousin ki engagement hai" }) });
+  const r = await tool("whatsapp_inbox", { from: "+919811900002" });
+  assert.equal(r.body.messages[0].body, "Cousin ki engagement hai");
+  assert.match(r.body.messages[1].media[0].media_url, /\/vonage\/media\?u=/);
+  const st = await fetch(`${base}/vonage/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message_uuid: "v-9", status: "delivered", to: "919811900002" }) });
+  assert.equal(st.status, 200);
+  const l = await (await fetch(`${base}/logs.json`)).json();
+  assert.equal(l.wa_status[0].status, "delivered");
+});
 await check("/logs and /health", async () => {
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.ok(l.calls.length > 10);

@@ -165,7 +165,7 @@ async function payPage(req, res, id, q) {
 
 async function logsPage(res, json) {
   const calls = await range("calls", 150);
-  if (json) return res.status(200).json({ store: STORE_KIND, calls, outbox: await range("outbox", 50), inbox: await range("inbox", 50) });
+  if (json) return res.status(200).json({ store: STORE_KIND, calls, outbox: await range("outbox", 50), inbox: await range("inbox", 50), wa_status: await range("wa_status", 50) });
   const rows = calls.map((c) => `<tr><td><code>${esc(c.ts)}</code><br><span class="muted">${esc(c.via)} · ${c.ms} ms</span></td>
     <td><b>${esc(c.tool)}</b><br><span class="tag ${c.status >= 400 ? "err" : ""}">${esc(c.rail || "")} · ${c.status}</span></td>
     <td><pre>${esc(JSON.stringify(c.args))}</pre></td><td><pre>${esc(c.result)}</pre></td></tr>`).join("");
@@ -227,6 +227,22 @@ export default async function handler(req, res) {
       await push("calls", { ts: msg.received_at, real_ts: new Date().toISOString(), via: "twilio-webhook", tool: "INBOUND WhatsApp", rail: "Twilio WhatsApp", args: { from: msg.from }, status: 200, ms: 0, result: JSON.stringify({ body: msg.body, media: msg.media.length }) });
       res.setHeader("Content-Type", "text/xml");
       return res.status(200).send("<Response></Response>");
+    }
+    if (path === "/vonage/inbound" && req.method === "POST") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      await W.vonageInbound(body, ctx.base);
+      return res.status(200).json({ ok: true });
+    }
+    if (path === "/vonage/status") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      if (body.message_uuid) await push("wa_status", { uuid: body.message_uuid, status: body.status, to: body.to, error: body.error?.title || body.error?.detail || null, at: new Date().toISOString() }, 200);
+      return res.status(200).json({ ok: true });
+    }
+    if (path === "/vonage/media") {
+      const f = await W.vonageMedia(q.get("u") || "");
+      if (!f) return res.status(404).send("media not found");
+      res.setHeader("Content-Type", f.type);
+      return res.status(200).send(f.bytes);
     }
     if (path === "/meta/webhook") {
       if (req.method === "GET") { const v = W.metaVerify(q); return res.status(v.status).send(v.text); }
