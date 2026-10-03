@@ -8,10 +8,9 @@
     agentId: "90bed2cb-2792-4b40-bfc0-7882dc869c00",
     relay: "https://vouch-mock-drab.vercel.app/bridge",
     relayOrigin: "https://vouch-mock-drab.vercel.app",
-    // Customer profile by WhatsApp number (in production: the CRM). Sent once, at the start of each thread.
-    profiles: {
-      "+919811935066": 'PROFILE: Riya, whatsapp +919811935066, size tag M, 160 cm, 58 kg, fit notes "broad shoulders, long torso", past return "sheer georgette kurta, too see-through", taps: pastel, simple, flowy, cotton/linen, pincode 110017, dealbreakers: sleeveless.'
-    }
+    // Known customers by WhatsApp number (in production: the CRM). Empty = every number is new, so Vouch
+    // onboards her in chat (N1–N3: height, weight, size, fit, pincode, style, dealbreakers, last return).
+    profiles: {}
   };
   if (window.__vouchBridge) window.__vouchBridge.stop();
   const state = { threads: {}, queue: [], busy: false, relay: null };
@@ -52,13 +51,22 @@
     const profile = CFG.profiles[ev.from] || `PROFILE: new customer, whatsapp ${ev.from}${ev.name ? ", name " + ev.name : ""}.`;
     const payload = ` EVENT: new WhatsApp message (Vonage webhook, id ${String(ev.id).slice(0, 8)}) from ${ev.from}: "${String(ev.text || "").replace(/"/g, "'")}"` + (ev.voice_note ? ` voice_note: ${ev.voice_note}` : "") + ". Your reply reaches her only through whatsapp_send.";
     const t0 = Date.now();
-    const j = await ask((isNew ? profile : "") + payload, state.threads[ev.from]);
+    let j = await ask((isNew ? profile : "") + payload, state.threads[ev.from]);
+    // Send check: a turn that answers her but never reached whatsapp_send leaves her with silence.
+    // Nudge once, in the same thread, and record that the nudge happened (visible in the relay log).
+    const sentOk = (x) => /WHATSAPP_SID:\s*(DRY-RUN|[0-9a-f]{8}-[0-9a-f-]{20,})/i.test(String(x.answer || ""));
+    if (!sentOk(j)) {
+      tell({ type: "vouch-info", text: "send check: no confirmed WhatsApp send in that turn — nudging the agent once" });
+      j = await ask(" SEND CHECK (bridge): your last turn ended without a successful whatsapp_send, so she has received nothing. If your decision stands, call whatsapp_send now with your exact reply to her (finish any step you started, e.g. after her yes create the order), then write the JSON answer.", state.threads[ev.from]);
+      j.nudged = true;
+    }
+    window.__vouchLog = (window.__vouchLog || []).concat([{ ev, j }]);
     const a = String(j.answer || "");
     const sent = (a.match(/SENT: ([^\n]*)/) || [])[1];
     const sid = (a.match(/WHATSAPP_SID: ([^\n]*)/) || [])[1];
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     tell({ type: "vouch-reply", hitl: j.hitl_trigger || null,
-      text: `(${secs}s, conf ${Number(j.confidence || 0).toFixed(2)}) ${sent || a.slice(0, 220)}${sid ? ` [sid ${sid}]` : ""}${j.hitl_trigger ? ` — ${j.hitl_trigger}; see Approvals` : ""}` });
+      text: `${j.nudged ? "[after send check] " : ""}(${secs}s, conf ${Number(j.confidence || 0).toFixed(2)}) ${sent || a.slice(0, 220)}${sid ? ` [sid ${sid}]` : ""}${j.hitl_trigger ? ` — ${j.hitl_trigger}; see Approvals` : ""}` });
   }
 
   async function drain() {

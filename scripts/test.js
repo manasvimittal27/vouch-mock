@@ -91,6 +91,13 @@ await check("unknown occasion (get together) still returns ranked rows, never a 
   assert.ok(r.body.rows.length > 3, "rows returned");
   assert.ok(r.body.picks.main, "has a main pick");
 });
+await check("'in N days' is converted by the tool; earliest arrival given when only timing blocks", async () => {
+  const r = await tool("pinelabs_catalog_search", { query: "wedding", occasion: "wedding", needed_in_days: 2, max_price: 4000, delivery_pin: "110034", size_tag: "M", buyer_height_cm: 160, buyer_weight_kg: 54, taps_colour: "pastel", taps_work: "simple" });
+  assert.match(r.body.needed_by, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(r.body.needed_by_text);
+  assert.ok(r.body.earliest_possible_arrival && r.body.earliest_possible_arrival.date);
+  assert.match(r.body.if_nothing_passes, /Earliest/);
+});
 await check("men's wear request returns no results", async () => {
   const r = await tool("pinelabs_catalog_search", { query: "kurta for my husband" });
   assert.equal(r.body.items.length, 0);
