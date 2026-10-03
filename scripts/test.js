@@ -244,6 +244,16 @@ await check("Vonage webhook: inbound text + voice note land in whatsapp_inbox; s
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.equal(l.wa_status[0].status, "delivered");
 });
+await check("/events feed returns new inbound WhatsApp messages after a timestamp, with CORS", async () => {
+  const t0 = new Date(Date.now() - 1000).toISOString();
+  await fetch(`${base}/vonage/inbound`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "whatsapp", message_uuid: "ev-1", from: "919811900003", message_type: "text", text: "2500 tak" }) });
+  const r = await fetch(`${base}/events?after=${encodeURIComponent(t0)}`);
+  assert.equal(r.headers.get("access-control-allow-origin"), "*");
+  const j = await r.json();
+  const e = j.events.find((x) => x.id === "ev-1");
+  assert.equal(e.text, "2500 tak");
+  assert.equal(e.from, "+919811900003");
+});
 await check("/logs and /health", async () => {
   const l = await (await fetch(`${base}/logs.json`)).json();
   assert.ok(l.calls.length > 10);

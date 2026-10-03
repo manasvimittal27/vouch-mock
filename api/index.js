@@ -228,6 +228,16 @@ export default async function handler(req, res) {
       res.setHeader("Content-Type", "text/xml");
       return res.status(200).send("<Response></Response>");
     }
+    if (path === "/events") {
+      // Inbound WhatsApp events for the AgenticOrg bridge (runs in the operator's logged-in tab).
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "no-store");
+      const after = Date.parse(q.get("after") || "") || 0;
+      const inbox = (await range("inbox", 100)).filter((m) => m.at && Date.parse(m.at) > after).reverse();
+      const events = inbox.map((m) => ({ id: m.message_sid || m.at, at: m.at, from: m.from, name: m.profile_name || "", text: m.body || "", provider: m.provider || "",
+        voice_note: m.media?.find((x) => /audio|ogg|voice/.test(x.content_type || ""))?.media_url || null }));
+      return res.status(200).json({ now: new Date().toISOString(), events });
+    }
     if (path === "/vonage/inbound" && req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       await W.vonageInbound(body, ctx.base);
