@@ -179,7 +179,10 @@ await check("demo clock +3 → Delivered", async () => {
 });
 await check("doorstep exchange to XL before 14 Oct-ish is feasible", async () => {
   const far = new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10);
-  const r = await tool("delhivery_doorstep_exchange", { waybill: wb, new_size: "XL", needed_by: far });
+  const q = await tool("delhivery_doorstep_exchange", { waybill: wb, new_size: "XL", needed_by: far });
+  assert.equal(q.body.booked, false, "quote only without her yes");
+  assert.match(q.body.next_step, /wait for her clear yes/);
+  const r = await tool("delhivery_doorstep_exchange", { waybill: wb, new_size: "XL", needed_by: far, confirmed_by_customer: true });
   assert.equal(r.body.feasible, true);
   assert.equal(r.body.same_visit, true);
 });
