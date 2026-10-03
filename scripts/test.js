@@ -148,6 +148,13 @@ await check("place seller order → seller_order_id, idempotent", async () => {
   const again = await tool("pinelabs_place_seller_order", { payment_order_id: order.order_id, product_id: "P01", size: "L" });
   assert.equal(again.body.seller_order_id, so.seller_order_id);
 });
+await check("seller order also accepts the payment id (v1-pay-…)", async () => {
+  const st = await tool("pinelabs_get_order_status", { order_id: order.order_id });
+  assert.match(st.body.next_step, /place_seller_order/);
+  const payId = st.body.data.payments.slice(-1)[0].id;
+  const r = await tool("pinelabs_place_seller_order", { payment_order_id: payId, product_id: "P01", size: "L" });
+  assert.equal(r.body.seller_order_id, so.seller_order_id);
+});
 await check("create Delhivery shipment → waybill", async () => {
   const r = await tool("delhivery_create_shipment", { order: so.seller_order_id, pin: "110017", payment_mode: "Prepaid" });
   wb = r.body.packages[0].waybill;
