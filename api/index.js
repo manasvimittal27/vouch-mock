@@ -222,7 +222,7 @@ export default async function handler(req, res) {
       const b = typeof req.body === "string" ? Object.fromEntries(new URLSearchParams(req.body)) : req.body || {};
       const media = [];
       for (let i = 0; i < Number(b.NumMedia || 0); i++) media.push({ media_url: b[`MediaUrl${i}`], content_type: b[`MediaContentType${i}`] });
-      const msg = { message_sid: b.MessageSid || b.SmsSid || "", from: String(b.From || "").replace(/^whatsapp:/, ""), to: String(b.To || "").replace(/^whatsapp:/, ""), profile_name: b.ProfileName || "", body: b.Body || "", media, received_at: istStamp(await nowIST()) };
+      const msg = { message_sid: b.MessageSid || b.SmsSid || "", from: String(b.From || "").replace(/^whatsapp:/, ""), to: String(b.To || "").replace(/^whatsapp:/, ""), profile_name: b.ProfileName || "", body: b.Body || "", media, received_at: istStamp(await nowIST()), at: new Date().toISOString() };
       await push("inbox", msg, 200);
       await push("calls", { ts: msg.received_at, real_ts: new Date().toISOString(), via: "twilio-webhook", tool: "INBOUND WhatsApp", rail: "Twilio WhatsApp", args: { from: msg.from }, status: 200, ms: 0, result: JSON.stringify({ body: msg.body, media: msg.media.length }) });
       res.setHeader("Content-Type", "text/xml");

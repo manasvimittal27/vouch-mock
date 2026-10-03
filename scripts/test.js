@@ -200,7 +200,7 @@ await check("Twilio inbound webhook → whatsapp_inbox (voice note)", async () =
   const w = await fetch(`${base}/twilio/inbound`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
   assert.equal(w.status, 200);
   const r = await tool("whatsapp_inbox", { from: "+919812345678" });
-  assert.equal(r.body.messages[0].media[0].content_type, "audio/ogg");
+  assert.match(r.body.messages[0].voice_note, /twilio\.com\/media/);
 });
 await check("whatsapp_send: validates input, dry-run switch works", async () => {
   const bad = await tool("whatsapp_send", { to: "+919812345678" });
@@ -223,16 +223,16 @@ await check("Meta webhook: verify handshake + inbound text and voice note land i
   const w = await fetch(`${base}/meta/webhook`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   assert.equal(w.status, 200);
   const r = await tool("whatsapp_inbox", { from: "+919811900001" });
-  assert.equal(r.body.messages[0].body, "haan, order karo");
-  assert.match(r.body.messages[1].media[0].media_url, /\/meta\/media\/MEDIA123$/);
+  assert.equal(r.body.messages[1].text, "haan, order karo");
+  assert.match(r.body.messages[0].voice_note, /\/meta\/media\/MEDIA123$/);
 });
 await check("Vonage webhook: inbound text + voice note land in whatsapp_inbox; status logged", async () => {
   const w = await fetch(`${base}/vonage/inbound`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "whatsapp", message_uuid: "v-1", from: "919811900002", to: "14157386102", message_type: "audio", audio: { url: "https://api-us.nexmo.com/v3/media/abc" }, profile: { name: "Riya" } }) });
   assert.equal(w.status, 200);
   await fetch(`${base}/vonage/inbound`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: "whatsapp", message_uuid: "v-2", from: "919811900002", message_type: "text", text: "Cousin ki engagement hai" }) });
   const r = await tool("whatsapp_inbox", { from: "+919811900002" });
-  assert.equal(r.body.messages[0].body, "Cousin ki engagement hai");
-  assert.match(r.body.messages[1].media[0].media_url, /\/vonage\/media\?u=/);
+  assert.equal(r.body.messages[1].text, "Cousin ki engagement hai");
+  assert.match(r.body.messages[0].voice_note, /\/vonage\/media\?u=/);
   const st = await fetch(`${base}/vonage/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message_uuid: "v-9", status: "delivered", to: "919811900002" }) });
   assert.equal(st.status, 200);
   const l = await (await fetch(`${base}/logs.json`)).json();
