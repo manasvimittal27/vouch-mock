@@ -4,6 +4,7 @@ import * as W from "../lib/whatsapp.js";
 //   /c/api/pin-codes/json/  /api/dc/expected_tat  /api/cmu/create.json  /api/v1/packages/json/   Delhivery REST mirrors
 //   /api/checkout/v1/orders  /api/pay/v1/orders/{id}  /api/pay/v1/orders/{id}/refunds          Pine Labs REST mirrors
 //   /pay/{order_id}                        hosted checkout page she opens from WhatsApp (MOCK)
+//   /track/{waybill}                       parcel-tracking page she opens from WhatsApp (MOCK, same data as delhivery_track)
 //   /logs  /logs.json                      every tool call as it lands (show this in the recording)
 //   /admin?key=...                         out-of-band scenario switches + demo clock
 //   /audio/{id}.mp3  /gnani/tts.mp3        Gnani voice replies
@@ -163,6 +164,30 @@ async function payPage(req, res, id, q) {
     <a class="btn no" href="/pay/${esc(id)}?outcome=fail">Simulate UPI timeout</a>`}</div>`));
 }
 
+// Her parcel-tracking page (MOCK, Delhivery sandbox look). Same data as the delhivery_track tool, so the page and the agent always agree.
+async function trackPage(res, wb) {
+  const out = await D.track({ waybill: wb });
+  const sh = out.body?.ShipmentData?.[0]?.Shipment;
+  if (!sh) return res.status(404).send(page("Tracking", `<div class="card"><span class="tag">Delhivery · sandbox tracking (MOCK)</span><h1>No shipment found</h1><p class="muted">Waybill ${esc(wb)} is not in the sandbox.</p></div>`));
+  const st = sh.Status.Status;
+  const fmt = (d) => { if (!d) return "—"; const x = new Date(d + "T00:00:00Z"); return x.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }); };
+  const steps = sh.OrderType === "Pickup" ? ["Manifested", "Out for Pickup", "Picked Up"] : ["Manifested", "In Transit", "Out for Delivery", "Delivered"];
+  const cur = Math.max(0, steps.indexOf(st === "Delayed" ? "In Transit" : st));
+  const delayed = st === "Delayed";
+  const late = sh.ExpectedDeliveryDate && sh.PromisedDeliveryDate && sh.ExpectedDeliveryDate > sh.PromisedDeliveryDate;
+  const tl = steps.map((s, i) => `<li class="${i < cur ? "done" : i === cur ? (delayed ? "now late" : "now") : ""}"><span class="dot"></span><div><b>${esc(s)}</b>${i === cur ? `<div class="muted">${esc(sh.Status.Instructions)} · ${esc(sh.Status.StatusLocation)} · ${esc(sh.Status.StatusDateTime)}</div>` : ""}</div></li>`).join("");
+  const big = st === "Delivered" ? `Delivered on ${fmt(sh.DeliveryDate)}` : st === "Picked Up" ? `Picked up on ${fmt(sh.DeliveryDate)}` : `Arriving by ${fmt(sh.ExpectedDeliveryDate)}`;
+  const css = `<style>.tl{list-style:none;padding:0;margin:14px 0 4px}.tl li{display:flex;gap:12px;padding:0 0 18px;position:relative}.tl li:not(:last-child)::before{content:"";position:absolute;left:7px;top:18px;bottom:0;width:2px;background:var(--line)}.tl li.done::before{background:var(--teal)}.dot{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);background:var(--card);margin-top:2px}.done .dot{background:var(--teal);border-color:var(--teal)}.now .dot{border-color:var(--teal);box-shadow:0 0 0 4px #e9f4ef}.late .dot{border-color:var(--red);box-shadow:0 0 0 4px #fdece4}.big{font-size:24px;font-weight:700;margin:6px 0}.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}.warn{background:#fdece4;color:var(--red);border-radius:10px;padding:10px 12px;font-size:14px;margin-top:10px}</style>`;
+  return res.status(200).send(page(`Track ${wb}`, `<div class="card" style="max-width:520px;margin:0 auto">
+    <span class="tag">Delhivery · sandbox tracking (MOCK, demo data)</span>
+    <div class="big">${esc(big)}</div>
+    <div class="muted">AWB ${esc(sh.AWB)} · ${esc(sh.Origin)} → ${esc(sh.Destination)}</div>
+    ${delayed || late ? `<div class="warn">Delayed: first promised for ${fmt(sh.PromisedDeliveryDate)}, now expected ${fmt(sh.ExpectedDeliveryDate)}.</div>` : ""}
+    <ol class="tl">${tl}</ol>
+    <div class="kv"><span class="muted">Order ref</span><span>${esc(sh.ReferenceNo)}</span><span class="muted">Pickup date</span><span>${fmt(sh.PickUpDate)}</span><span class="muted">Promised</span><span>${fmt(sh.PromisedDeliveryDate)}</span><span class="muted">Payment</span><span>${esc(sh.OrderType === "Prepaid" ? "Prepaid (paid via Pine Labs)" : sh.OrderType)}</span></div>
+    <p class="muted" style="font-size:12px;margin-top:14px">Questions about this delivery? Reply to Vouch on WhatsApp.</p></div>`, css));
+}
+
 async function logsPage(res, json) {
   const calls = await range("calls", 150);
   if (json) return res.status(200).json({ store: STORE_KIND, calls, outbox: await range("outbox", 50), inbox: await range("inbox", 50), wa_status: await range("wa_status", 50) });
@@ -307,6 +332,8 @@ export default async function handler(req, res) {
     if (path === "/admin") return await admin(req, res, q);
     let m = /^\/pay\/([^/]+)$/.exec(path);
     if (m) return await payPage(req, res, m[1], q);
+    m = /^\/track\/([0-9A-Za-z-]+)$/.exec(path);
+    if (m) return await trackPage(res, m[1]);
     m = /^\/audio\/([a-z0-9]+)\.mp3$/.exec(path);
     if (m) {
       const buf = await G.storedAudio(m[1]);

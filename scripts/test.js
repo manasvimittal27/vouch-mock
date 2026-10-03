@@ -307,6 +307,17 @@ await check("/logs and /health", async () => {
   assert.equal(h.tools, 15);
 });
 
+await check("shipment returns tracking_url and /track page renders", async () => {
+  const r = await tool("delhivery_create_shipment", { order: "SO-TEST-TRACK", pin: "110017", payment_mode: "Prepaid" });
+  assert.ok(/\/track\/14908\d+$/.test(r.body.tracking_url), r.text);
+  const wb = r.body.packages[0].waybill;
+  const html = await (await fetch(`${base}/track/${wb}`)).text();
+  assert.ok(html.includes("Arriving by") || html.includes("Delivered on"));
+  assert.ok(html.includes("MOCK"));
+  const t = await tool("delhivery_track", { waybill: wb });
+  assert.equal(t.body.tracking_url.endsWith(`/track/${wb}`), true);
+});
+
 if (process.env.SLOW) {
   await check("000001 times out after 12 s", async () => {
     const t = Date.now();
